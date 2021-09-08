@@ -208,9 +208,9 @@ public class MeshCombinerScript : MonoBehaviour
                     finalCombiners.Clear();
 
                     if (isDebugging) { Debug.Log("Mesh - Fnished Generating Mesh"); }
-                  
 
-                    GameModeSurvivalScript.GenerationTicker = 4;
+                    // Do whatever after gen is finished
+                  
                 }
 
             }
