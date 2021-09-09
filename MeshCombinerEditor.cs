@@ -19,7 +19,7 @@ public class MeshCombinerEditor : Editor
 
         if (GUILayout.Button("DestroyMesh"))
         {
-            myScript.SetChildrenActive();
+            myScript.DestroyMesh();
         }
     }
 }

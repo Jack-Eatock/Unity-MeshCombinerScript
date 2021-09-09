@@ -10,19 +10,19 @@ public class BaseMaterialsAgainstDependencies {
     public List<MeshFilter> MeshFiltersThatRequireBaseMaterial = new List<MeshFilter>();
     public List<int> MeshFilterSubIndex = new List<int>();
 
-
     public Mesh SubMesh = null;
 }
 
 
-public class MeshCombinerScript : MonoBehaviour
-{
+public class MeshCombinerScript : MonoBehaviour {
     [SerializeField] private bool isDebugging = false;
 
-    public GameObject MeshHolder;
-    public GameObject MeshStorage;
+    public List<Transform> GameObjectsToMerge = new List<Transform>(); // Should be the parent transform.
 
-  //  public MeshFilter myMeshFilter;
+    public GameObject MeshHolder;  // Prefab, the object that is created to hold the new mesh. Requires mesh filter and renderer.
+    public GameObject MeshStorage; // The origin game object that will act as a storage for all the new meshes that are created. 
+
+    //  public MeshFilter myMeshFilter;
     public int maxNumberOfVerticesForSubMeshes;
     public int maxNumberOfVerticesForMeshes;
 
@@ -30,51 +30,47 @@ public class MeshCombinerScript : MonoBehaviour
 
     public List<BaseMaterialsAgainstDependencies> BaseMaterialsRequired = new List<BaseMaterialsAgainstDependencies>();
 
-    public void MyOwnAdvancedMeshCombinder()
-    {
+    public void MyOwnAdvancedMeshCombinder() {
         BaseMaterialsRequired.Clear();
 
-        // First decide what to actually merge.
-
         List<GameObject> objectsToMerge = new List<GameObject>();
-        
-        // Only Add filters we want to affect.
 
-        foreach (MeshFilter filter in transform.GetComponentsInChildren<MeshFilter>(false)) // Loops through every MeshFilter that is active on its children.
-        {
-            if (filter.transform.tag != "IgnoreFromMeshMerge" && filter.transform != transform)
+        Debug.Log("Number of objects wanted to Merge: " + GameObjectsToMerge.Count);
+
+        // Iterate through every object that should be merged.
+        // Getting a reference to all their mesh filters.  ( unless they are supposed to be ignored )
+        foreach (Transform ObjToMerge in GameObjectsToMerge) {
+
+            foreach (MeshFilter filter in ObjToMerge.GetComponentsInChildren<MeshFilter>(false)) // Loops through every MeshFilter that is active on its children.
             {
-                objectsToMerge.Add(filter.gameObject);
+                // Ensures any objects that have the ignore merge tag or this object from being merged.
+                if (filter.transform.tag != "IgnoreFromMeshMerge" && filter.transform != transform) { objectsToMerge.Add(filter.gameObject); }
             }
-
         }
+
 
         // Now that we know what to merge.
 
-        //Debug.Log("Number of objects ready to merge: " + objectsToMerge.Count);
+        if (isDebugging) { Debug.Log("Number of objects ready to merge: " + objectsToMerge.Count); }
 
         // Now split the objects mesh filters into lists based on their Material.
         int localMatSubIndex = 0;
 
-        foreach (GameObject obj in objectsToMerge)
-        {
+        foreach (GameObject obj in objectsToMerge) {
             // Get all the materials on this object.
             Material[] localMaterials = obj.GetComponent<Renderer>().sharedMaterials; // Usually only one material. 
 
             localMatSubIndex = 0;
 
             // Loop through all the local materials, to check if you need to add another material.
-            foreach (Material localMat in localMaterials)
-            {
+            foreach (Material localMat in localMaterials) {
                 bool isTheMaterialAlreadySetUP = false;
 
                 // If the locally required material is already defined. Then don't worry about it. Otherwise add it.
-                foreach (BaseMaterialsAgainstDependencies baseMat in BaseMaterialsRequired)
-                {
+                foreach (BaseMaterialsAgainstDependencies baseMat in BaseMaterialsRequired) {
                     //Debug.Log("baseMat " + localMat);
 
-                    if (baseMat.BaseMaterial == localMat)
-                    {
+                    if (baseMat.BaseMaterial == localMat) {
                         // This material already has a dependency set up, soo add its mesh filter. 
                         // But first check their wont be too many vertices.
                         MeshFilter localMaterialsFilter = obj.GetComponent<MeshFilter>();
@@ -87,8 +83,6 @@ public class MeshCombinerScript : MonoBehaviour
                             break;
                         }
                     }
-                    
-
                 }
 
 
@@ -116,26 +110,19 @@ public class MeshCombinerScript : MonoBehaviour
         // Now that we have a 2d array of the Mesh filters against their required Material. We should Squish them down into a submesh per Material.
         int index;
 
-        foreach (BaseMaterialsAgainstDependencies baseMat in BaseMaterialsRequired)
-        {
-            //Debug.Log("Material " + baseMat.BaseMaterial + " Has " + baseMat.MeshFiltersThatRequireBaseMaterial.Count + "Dependencies." );
+        foreach (BaseMaterialsAgainstDependencies baseMat in BaseMaterialsRequired) {
+            if (isDebugging) { Debug.Log("Material " + baseMat.BaseMaterial + " Has " + baseMat.MeshFiltersThatRequireBaseMaterial.Count + "Dependencies."); }
 
             // Create a list of CombineInstances to store all of the info we need for each filter within this current material to combine into one. 
 
             List<CombineInstance> combinersForEachFilterPerMaterial = new List<CombineInstance>();
 
-
             index = 0;
 
-            foreach (MeshFilter filter in baseMat.MeshFiltersThatRequireBaseMaterial)
-            {
+            foreach (MeshFilter filter in baseMat.MeshFiltersThatRequireBaseMaterial) {
                 CombineInstance Ci = new CombineInstance();
 
-                if (!filter.sharedMesh.isReadable)
-                {
-                    Debug.Log(filter.transform.parent.transform.name + " - Is not readable!!!");
-                }
-              
+                if (!filter.sharedMesh.isReadable) { Debug.Log(filter.transform.parent.transform.name + " - Is not readable!!!"); }
 
                 Ci.mesh = filter.sharedMesh;
                 Ci.subMeshIndex = baseMat.MeshFilterSubIndex[index];
@@ -152,36 +139,32 @@ public class MeshCombinerScript : MonoBehaviour
             newMesh.CombineMeshes(combinersForEachFilterPerMaterial.ToArray(), true);
             baseMat.SubMesh = newMesh;
 
-            //Debug.Log( "This Submesh has: " + baseMat.SubMesh.vertexCount + " Vertices");
+            if (isDebugging) { Debug.Log("This Submesh has: " + baseMat.SubMesh.vertexCount + " Vertices"); }
 
         }
 
-
         // Finally combine all the meshes.
-        
+
         List<CombineInstance> finalCombiners = new List<CombineInstance>();
         List<Material> currentMaterialsRequired = new List<Material>();
         int currentVertices = 0;
 
-        //Debug.Log(" LOOK AT :" + BaseMaterialsRequired.Count);
+        for (int baseMaterialIndex = 0; baseMaterialIndex < BaseMaterialsRequired.Count; baseMaterialIndex++) {
 
-        for (int baseMaterialIndex = 0; baseMaterialIndex < BaseMaterialsRequired.Count; baseMaterialIndex++)
-        {
-           
             CombineInstance ci = new CombineInstance();
             BaseMaterialsAgainstDependencies baseMat = BaseMaterialsRequired[baseMaterialIndex];
-  
+
             ci.mesh = baseMat.SubMesh;
             ci.transform = transform.worldToLocalMatrix;
             ci.subMeshIndex = 0;
-            
-           // Debug.Log("Adding " + baseMat.BaseMaterial + " with " + ci.mesh.vertexCount);
+
+            if (isDebugging) { Debug.Log("Adding " + baseMat.BaseMaterial + " with " + ci.mesh.vertexCount); }
 
             int verticesInMesh = ci.mesh.vertexCount;
 
             if (currentVertices + verticesInMesh > maxNumberOfVerticesForMeshes) // Need to create a new mesh, Over the Mesh Vertex limit.
             {
-           
+
                 // Create Mesh for last. 
                 CreateNewMesh(finalCombiners.ToArray(), currentMaterialsRequired.ToArray());
 
@@ -191,14 +174,12 @@ public class MeshCombinerScript : MonoBehaviour
                 finalCombiners.Clear();
 
                 // Set up for next mesh.
-
                 finalCombiners.Add(ci);
                 currentMaterialsRequired.Add(baseMat.BaseMaterial);
                 currentVertices += verticesInMesh;
 
                 // On the odd Chance that this is also the last run. 
-                if (baseMaterialIndex == BaseMaterialsRequired.Count - 1)
-                {
+                if (baseMaterialIndex == BaseMaterialsRequired.Count - 1) {
                     // Create new mesh.
                     CreateNewMesh(finalCombiners.ToArray(), currentMaterialsRequired.ToArray());
 
@@ -209,19 +190,15 @@ public class MeshCombinerScript : MonoBehaviour
 
                     if (isDebugging) { Debug.Log("Mesh - Fnished Generating Mesh"); }
 
-                    // Do whatever after gen is finished
-                  
+                    /// Do whatever after gen is finished \\\
                 }
-
             }
 
-            else if ( baseMaterialIndex == BaseMaterialsRequired.Count - 1) // This is the final run. So finish up and create the new mesh.
+            else if (baseMaterialIndex == BaseMaterialsRequired.Count - 1) // This is the final run. So finish up and create the new mesh.
             {
                 // Make up for final run
                 finalCombiners.Add(ci);
                 currentMaterialsRequired.Add(baseMat.BaseMaterial);
-
-
 
                 // Create new mesh.
                 CreateNewMesh(finalCombiners.ToArray(), currentMaterialsRequired.ToArray());
@@ -233,7 +210,6 @@ public class MeshCombinerScript : MonoBehaviour
 
                 if (isDebugging) { Debug.Log("Mesh - Fnished Generating Mesh"); }
 
-                GameModeSurvivalScript.GenerationTicker = 4;
             }
 
             else // Keep Looping.
@@ -241,18 +217,15 @@ public class MeshCombinerScript : MonoBehaviour
                 currentVertices += verticesInMesh;
                 finalCombiners.Add(ci);
                 currentMaterialsRequired.Add(baseMat.BaseMaterial);
-
             }
-
         }
-      
 
-        SetActiveAllChildren(transform, false);
+        // Hide the original meshes.
+        foreach (Transform objToMerge in GameObjectsToMerge) { SetActiveAllChildren(objToMerge, false); }
     }
 
-  
-    private void CreateNewMesh(CombineInstance[] finalCombiners, Material[] currentMaterialsRequired)
-    {
+
+    private void CreateNewMesh(CombineInstance[] finalCombiners, Material[] currentMaterialsRequired) {
         GameObject newMesh = GameObject.Instantiate(MeshHolder, MeshStorage.transform);
 
         Meshes.Add(newMesh);
@@ -266,58 +239,40 @@ public class MeshCombinerScript : MonoBehaviour
 
     public bool VerifyNumOfVertices(BaseMaterialsAgainstDependencies BaseMat, MeshFilter meshFilterToAdd) // Checks if the subMesh will have too many Vertices.
     {
-
         float currentNumOfVertices = 0;
 
-        foreach (MeshFilter localFilter in BaseMat.MeshFiltersThatRequireBaseMaterial)
-        {
-            //Debug.Log(localFilter.transform.name);
-            currentNumOfVertices += localFilter.sharedMesh.vertexCount;
-        }
+        foreach (MeshFilter localFilter in BaseMat.MeshFiltersThatRequireBaseMaterial) { currentNumOfVertices += localFilter.sharedMesh.vertexCount; }
 
         int numOfVerticesToAdd = meshFilterToAdd.sharedMesh.vertexCount;
 
         // Ensures that there are not too many vertices.
-
-        if (currentNumOfVertices + numOfVerticesToAdd > maxNumberOfVerticesForSubMeshes) // If there are too many Split it .
-        {
-            return false;
-        }
+        // If there are too many Split it 
+        if (currentNumOfVertices + numOfVerticesToAdd > maxNumberOfVerticesForSubMeshes) { return false; }
 
         return true;
-
     }
 
-    private void SetActiveAllChildren(Transform transform, bool value)
-    {
+    private void SetActiveAllChildren(Transform transform, bool value) {
 
-        foreach (Transform child in transform)
-        {
-            if (child.transform.tag != "IgnoreFromMeshMerge")
-            {
-                child.gameObject.SetActive(value);
-            }
-
+        foreach (Transform child in transform) {
+            if (child.transform.tag != "IgnoreFromMeshMerge") { child.gameObject.SetActive(value); }
             SetActiveAllChildren(child, value);
         }
     }
 
 
+    public void DestroyMesh() {
 
+        // Show the original meshes.
+        foreach (Transform objToMerge in GameObjectsToMerge) { SetActiveAllChildren(objToMerge, true); }
 
-    public void DestroyMesh()
-    {
-        SetActiveAllChildren(transform, true);
+        // Delete the new combined meshes
+        foreach (GameObject mesh in Meshes) { DestroyImmediate(mesh); }
 
-        foreach (GameObject mesh in Meshes)
-        {
-            Destroy(mesh);
-        }
-
+        // Reset
         Meshes.Clear();
 
         if (isDebugging) { Debug.Log("Mesh - Destroyed Mesh"); }
-
     }
 
 
@@ -352,12 +307,7 @@ public class MeshCombinerScript : MonoBehaviour
 
 
 
-
-
-
-
-
-
+    // one set of example code I was using as a reference
 
     /*
 
